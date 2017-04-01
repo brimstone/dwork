@@ -36,7 +36,7 @@ func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, e
 			continue
 		}
 		log.Printf("Distributing work unit %d\n", i)
-		workUnits[i].Id = int32(i)
+		workUnits[i].Id = int64(i)
 		workUnits[i].Status = 2
 		workUnits[i].Timestamp = time.Now().Unix()
 		return &workUnits[i], nil
@@ -57,12 +57,23 @@ func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.Results
 
 func Main(cmd *cobra.Command, args []string) {
 	workSize := 10
-	for i := int32(0); i < 100; i++ {
+	for i := int64(0); i < 100; i++ {
 		workUnits = append(workUnits, pb.WorkUnit{
 			Offset: i,
-			Size:   int32(workSize),
+			Size:   int64(workSize),
 			Search: 42,
 			Status: 1,
+			Code: `
+func work(x) {
+	return sprintf("%x\n", sha256(x + ""))
+}
+func check(x) {
+	if x[0:1] == "2" {
+		return true
+	}
+	return false
+}
+`,
 		})
 	}
 
