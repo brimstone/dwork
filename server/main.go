@@ -61,7 +61,9 @@ func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, e
 			continue
 		}
 		log.Printf("Distributing work unit %d\n", i)
+		shard.JobID = jobid
 		shard.Id = int64(i)
+		shard.Offset = int64(i)
 		shard.Status = 1
 		shard.Size = job.Size
 		shard.Code = job.Code
@@ -75,6 +77,7 @@ func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, e
 func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.ResultsSuccess, error) {
 	if r.Found {
 		log.Println("Someone found it!")
+		log.Printf("%#v\n",r)
 		job := jobs[r.JobID]
 		job.Lock.Lock()
 		defer job.Lock.Unlock()
