@@ -20,26 +20,53 @@ import (
 type server struct{}
 
 var port = ":9000"
-var working = true
-var workMutex sync.Mutex
-var workUnits []pb.WorkUnit
+var jobs map[string]*Job
+
+const MaxInt64 = int(^uint(0) >> 1)
+
+type Job struct {
+	Size   int64
+	Status bool
+	Shards [1000]*pb.WorkUnit
+	Code   string
+	Lock   *sync.Mutex
+}
 
 func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, error) {
-	if !working {
+	var jobid string
+
+	// TODO validate in
+
+	// Look for a job that needs workers
+	for id, job := range jobs {
+		if job.Status {
+			jobid = id
+			break
+		}
+	}
+	if jobid == "" {
 		return nil, fmt.Errorf("No work")
 	}
-	workMutex.Lock()
-	defer workMutex.Unlock()
+	job := jobs[jobid]
+	job.Lock.Lock()
+	defer job.Lock.Unlock()
 	// TODO Find next workUnit in workUnits with status = Unworked
-	for i := range workUnits {
-		if workUnits[i].Status != 1 {
+	for i := range job.Shards {
+		shard := job.Shards[i]
+		if shard == nil {
+			job.Shards[i] = &pb.WorkUnit{}
+			shard = job.Shards[i]
+		}
+		if shard.Status != 0 {
 			continue
 		}
 		log.Printf("Distributing work unit %d\n", i)
-		workUnits[i].Id = int64(i)
-		workUnits[i].Status = 2
-		workUnits[i].Timestamp = time.Now().Unix()
-		return &workUnits[i], nil
+		shard.Id = int64(i)
+		shard.Status = 1
+		shard.Size = job.Size
+		shard.Code = job.Code
+		shard.Timestamp = time.Now().Unix()
+		return shard, nil
 	}
 	return nil, fmt.Errorf("No work")
 }
@@ -48,7 +75,10 @@ func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, e
 func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.ResultsSuccess, error) {
 	if r.Found {
 		log.Println("Someone found it!")
-		working = false
+		job := jobs[r.JobID]
+		job.Lock.Lock()
+		defer job.Lock.Unlock()
+		job.Status = false
 	}
 	return &pb.ResultsSuccess{
 		Success: true,
@@ -56,25 +86,21 @@ func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.Results
 }
 
 func Main(cmd *cobra.Command, args []string) {
-	workSize := 10
-	for i := int64(0); i < 100; i++ {
-		workUnits = append(workUnits, pb.WorkUnit{
-			Offset: i,
-			Size:   int64(workSize),
-			Search: 42,
-			Status: 1,
-			Code: `
+	jobs = make(map[string]*Job)
+
+	jobs["sha256"] = &Job{
+		Size:   1000000,
+		Status: true,
+		Lock:   &sync.Mutex{},
+		Code: `
 func work(x) {
-	return sprintf("%x\n", sha256(x + ""))
-}
-func check(x) {
-	if x[0:1] == "2" {
-		return true
+	msg = x + ""
+	hash = sprintf("%x\n", sha256(msg))
+	if hash[0:2] == "ff" {
+		return hash
 	}
-	return false
 }
 `,
-		})
 	}
 
 	lis, err := net.Listen("tcp", port)

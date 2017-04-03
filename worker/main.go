@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"runtime"
 	"strconv"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -30,7 +32,11 @@ func Main(cmd *cobra.Command, args []string) {
 	c = pb.NewDworkClient(conn)
 
 	done := make(chan bool)
-	createWorker(done)
+	syscall.Setpriority(syscall.PRIO_PROCESS, 0, 19)
+	c := runtime.NumCPU()
+	for i := 0; i < c; i++ {
+		go createWorker(done)
+	}
 
 	<-done
 }
@@ -39,16 +45,14 @@ func performWork(env *vm.Env, w *pb.WorkUnit) *pb.Results {
 	r := &pb.Results{}
 	r.Workid = w.Id
 	log.Printf("Performing work with %#v\n", w)
-	// TODO real work happens here
-	time.Sleep(time.Second * 2)
+	// real work happens here
 	for i := w.Offset * w.Size; i < (w.Offset+1)*w.Size; i++ {
-		log.Println("Checking", i)
-		v, err := env.Execute("check(work(iterate(" + strconv.FormatInt(i, 10) + ")))")
+		v, err := env.Execute("work(" + strconv.FormatInt(i, 10) + ")")
 		if err != nil {
 			log.Fatal("Error iterating ", err)
 		}
-		if v.Type().Kind() == reflect.Bool && v.Bool() == true {
-			fmt.Printf("Found it: %d\n", i)
+		if v.Type().Kind() != reflect.Bool || v.Bool() != false {
+			fmt.Printf("Found it: %d %s\n", i, v)
 			r.Found = true
 			break
 		}
@@ -57,11 +61,16 @@ func performWork(env *vm.Env, w *pb.WorkUnit) *pb.Results {
 }
 
 func createWorker(done chan bool) {
+	waitBackoff := 1
 	for {
 		workUnit, err := c.GiveWork(context.Background(), &pb.WorkerID{})
-		if err != nil && err.Error() == "No work" {
-			break
+		if err != nil {
+			fmt.Printf("Error retrieving work: %#v Waiting for %ds for more work\n", err.Error(), waitBackoff)
+			time.Sleep(time.Second * time.Duration(waitBackoff))
+			//waitBackoff = waitBackoff * 2
+			continue
 		}
+		waitBackoff = 1
 		env, err := createVm(workUnit.Code)
 		if err != nil {
 			log.Println("Error loading usercode into worker vm")
@@ -84,15 +93,7 @@ func createVm(usercode string) (*vm.Env, error) {
 	env.Define("sha256", sha256.Sum256)
 
 	_, err := env.Execute(`
-	func iterate(x) {
-		return x
-	}
-
 	func work(x) {
-		return x
-	}
-
-	func check(x) {
 		return true
 	}
 `)
