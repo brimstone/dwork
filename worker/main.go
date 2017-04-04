@@ -9,7 +9,6 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
-	"time"
 
 	"google.golang.org/grpc"
 
@@ -18,11 +17,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var address = "localhost:9000"
-
 var c pb.DworkClient
 
 func Main(cmd *cobra.Command, args []string) {
+	address, err := cmd.Flags().GetString("server")
 	// Set up a connection to the server.
 	conn, err := grpc.Dial(address, grpc.WithInsecure())
 	if err != nil {
@@ -45,7 +43,7 @@ func performWork(env *vm.Env, w *pb.WorkUnit) *pb.Results {
 	r := &pb.Results{}
 	r.Workid = w.Id
 	r.JobID = w.JobID
-	log.Printf("Performing work with %#v\n", w)
+	log.Printf("Performing work on job %s shard %d\n", w.JobID, w.Id)
 	// real work happens here
 	for i := w.Offset * w.Size; i < (w.Offset+1)*w.Size; i++ {
 		v, err := env.Execute("work(" + strconv.FormatInt(i, 10) + ")")
@@ -54,6 +52,7 @@ func performWork(env *vm.Env, w *pb.WorkUnit) *pb.Results {
 		}
 		if v.Type().Kind() != reflect.Bool || v.Bool() != false {
 			fmt.Printf("Found it: %d %s\n", i, v)
+			r.Location = i
 			r.Found = true
 			break
 		}
@@ -67,9 +66,12 @@ func createWorker(done chan bool) {
 		workUnit, err := c.GiveWork(context.Background(), &pb.WorkerID{})
 		if err != nil {
 			fmt.Printf("Error retrieving work: %#v Waiting for %ds for more work\n", err.Error(), waitBackoff)
-			time.Sleep(time.Second * time.Duration(waitBackoff))
-			//waitBackoff = waitBackoff * 2
-			continue
+			break
+			/*
+				time.Sleep(time.Second * time.Duration(waitBackoff))
+				waitBackoff = waitBackoff * 2
+				continue
+			*/
 		}
 		waitBackoff = 1
 		env, err := createVm(workUnit.Code)

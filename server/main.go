@@ -25,11 +25,12 @@ var jobs map[string]*Job
 const MaxInt64 = int(^uint(0) >> 1)
 
 type Job struct {
-	Size   int64
-	Status bool
-	Shards [1000]*pb.WorkUnit
-	Code   string
-	Lock   *sync.Mutex
+	Size     int64
+	Status   bool
+	Shards   [1000]*pb.WorkUnit
+	Code     string
+	Lock     *sync.Mutex
+	Solution interface{}
 }
 
 func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, error) {
@@ -50,37 +51,41 @@ func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, e
 	job := jobs[jobid]
 	job.Lock.Lock()
 	defer job.Lock.Unlock()
-	// TODO Find next workUnit in workUnits with status = Unworked
-	for i := range job.Shards {
-		shard := job.Shards[i]
+	var shard *pb.WorkUnit
+	var i int
+	// Find next workUnit in workUnits with status = Unworked (0) or Timestamp is too old
+	// TODO figure out how this could end up unbounded or something?
+	for i = range job.Shards {
+		shard = job.Shards[i]
 		if shard == nil {
 			job.Shards[i] = &pb.WorkUnit{}
 			shard = job.Shards[i]
 		}
-		if shard.Status != 0 {
-			continue
+		if shard.Status == 0 {
+			break
 		}
-		log.Printf("Distributing work unit %d\n", i)
-		shard.JobID = jobid
-		shard.Id = int64(i)
-		shard.Offset = int64(i)
-		shard.Status = 1
-		shard.Size = job.Size
-		shard.Code = job.Code
-		shard.Timestamp = time.Now().Unix()
-		return shard, nil
+		// TODO hand out shards that are stale
 	}
-	return nil, fmt.Errorf("No work")
+	log.Printf("Distributing work unit %d\n", i)
+	shard.JobID = jobid
+	shard.Id = int64(i)
+	shard.Offset = int64(i)
+	shard.Status = 1
+	shard.Size = job.Size
+	shard.Code = job.Code
+	shard.Timestamp = time.Now().Unix()
+	// TODO something about shard log/history
+	return shard, nil
 }
 
-// TODO
 func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.ResultsSuccess, error) {
 	if r.Found {
 		log.Println("Someone found it!")
-		log.Printf("%#v\n",r)
+		log.Printf("%#v\n", r)
 		job := jobs[r.JobID]
 		job.Lock.Lock()
 		defer job.Lock.Unlock()
+		job.Solution = r.Location
 		job.Status = false
 	}
 	return &pb.ResultsSuccess{
@@ -99,7 +104,7 @@ func Main(cmd *cobra.Command, args []string) {
 func work(x) {
 	msg = x + ""
 	hash = sprintf("%x\n", sha256(msg))
-	if hash[0:2] == "ff" {
+	if hash[0:6] == "ffffff" {
 		return hash
 	}
 }
