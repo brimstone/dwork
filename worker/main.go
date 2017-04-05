@@ -86,7 +86,8 @@ func createWorker(done chan bool) {
 			log.Println("why fail?")
 		}
 	}
-	done <- true
+	// Unreachable code
+	//done <- true
 }
 
 func createVm(usercode string) (*vm.Env, error) {
