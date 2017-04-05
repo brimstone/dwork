@@ -34,8 +34,10 @@ package pb;
 // The greeting service definition.
 service Dwork {
   // Sends a greeting
-  rpc GiveWork (WorkerID) returns (WorkUnit) {}
-  rpc receiveResults(Results) returns (ResultsSuccess) {}
+  rpc GiveWork(WorkerID) returns (WorkUnit) {}
+  rpc ReceiveResults(Results) returns (Success) {}
+  rpc SubmitJob(Job) returns (Success) {}
+  rpc GetAllJobs(JobParams) returns (JobStatuses) {}
 }
 
 // The request message containing the user's name.
@@ -53,15 +55,32 @@ message WorkUnit {
   int64 ID = 2;
   int64 Offset = 3;
   int64 Size = 4;
-  int64 Status = 5;
+  int64 Status = 5; // TODO this should use enums
   int64 Timestamp = 6;
   string Code = 7;
 }
 
-message ResultsSuccess {
+message Success {
   bool Success = 1;
 }
 
 message WorkerID {
-	string UUID = 1;
+  string UUID = 1;
+}
+
+message Job {
+  string Name = 1;
+  string Code = 2;
+}
+
+message JobParams {}
+
+message JobStatuses {
+  message JobStatus {
+    string Name = 1;
+    int64 Shards = 2;
+	bool Found = 3;
+    string Location = 4;
+  }
+  repeated JobStatus Statuses = 1;
 }

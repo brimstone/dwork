@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -30,7 +31,7 @@ type Job struct {
 	Shards   [1000]*pb.WorkUnit
 	Code     string
 	Lock     *sync.Mutex
-	Solution interface{}
+	Solution string // I'd like this to be more generic, but oh well
 }
 
 func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, error) {
@@ -78,18 +79,38 @@ func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, e
 	return shard, nil
 }
 
-func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.ResultsSuccess, error) {
+func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.Success, error) {
 	if r.Found {
 		log.Println("Someone found it!")
 		log.Printf("%#v\n", r)
 		job := jobs[r.JobID]
 		job.Lock.Lock()
 		defer job.Lock.Unlock()
-		job.Solution = r.Location
+		job.Solution = strconv.FormatInt(r.Location, 10)
 		job.Status = false
 	}
-	return &pb.ResultsSuccess{
+	return &pb.Success{
 		Success: true,
+	}, nil
+}
+
+func (s *server) SubmitJob(ctx context.Context, job *pb.Job) (*pb.Success, error) {
+	return nil, nil
+}
+
+func (s *server) GetAllJobs(ctx context.Context, _ *pb.JobParams) (*pb.JobStatuses, error) {
+	var statuses []*pb.JobStatuses_JobStatus
+
+	for name, job := range jobs {
+		statuses = append(statuses, &pb.JobStatuses_JobStatus{
+			Name:     name,
+			Shards:   int64(len(job.Shards)),
+			Found:    !job.Status,
+			Location: job.Solution,
+		})
+	}
+	return &pb.JobStatuses{
+		Statuses: statuses,
 	}, nil
 }
 

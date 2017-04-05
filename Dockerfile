@@ -1,5 +1,5 @@
 FROM scratch
 
-COPY app /
+COPY dwork /
 
 ENTRYPOINT ["/dwork"]
