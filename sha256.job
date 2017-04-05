@@ -1,0 +1,7 @@
+func work(x) {
+    msg = x + ""
+    hash = sprintf("%x\n", sha256(msg))
+    if hash[0:4] == "ffff" {
+        return hash
+    }
+}

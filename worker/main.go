@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strconv"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc"
 
@@ -66,12 +67,12 @@ func createWorker(done chan bool) {
 		workUnit, err := c.GiveWork(context.Background(), &pb.WorkerID{})
 		if err != nil {
 			fmt.Printf("Error retrieving work: %#v Waiting for %ds for more work\n", err.Error(), waitBackoff)
-			break
-			/*
-				time.Sleep(time.Second * time.Duration(waitBackoff))
-				waitBackoff = waitBackoff * 2
-				continue
-			*/
+			time.Sleep(time.Second * time.Duration(waitBackoff))
+			waitBackoff = waitBackoff * 2
+			if waitBackoff > 64 {
+				waitBackoff = 64
+			}
+			continue
 		}
 		waitBackoff = 1
 		env, err := createVm(workUnit.Code)

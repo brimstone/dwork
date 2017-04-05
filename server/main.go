@@ -95,7 +95,26 @@ func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.Success
 }
 
 func (s *server) SubmitJob(ctx context.Context, job *pb.Job) (*pb.Success, error) {
-	return nil, nil
+	if job.Name == "" {
+		return &pb.Success{
+			Success: false,
+		}, nil
+	}
+	if job.Code == "" {
+		return &pb.Success{
+			Success: false,
+		}, nil
+	}
+	log.Printf("Got a job submission: %s\n", job.Name)
+	jobs[job.Name] = &Job{
+		Size:   1000000,
+		Status: true,
+		Lock:   &sync.Mutex{},
+		Code:   job.Code,
+	}
+	return &pb.Success{
+		Success: true,
+	}, nil
 }
 
 func (s *server) GetAllJobs(ctx context.Context, _ *pb.JobParams) (*pb.JobStatuses, error) {
@@ -116,21 +135,6 @@ func (s *server) GetAllJobs(ctx context.Context, _ *pb.JobParams) (*pb.JobStatus
 
 func Main(cmd *cobra.Command, args []string) {
 	jobs = make(map[string]*Job)
-
-	jobs["sha256"] = &Job{
-		Size:   1000000,
-		Status: true,
-		Lock:   &sync.Mutex{},
-		Code: `
-func work(x) {
-	msg = x + ""
-	hash = sprintf("%x\n", sha256(msg))
-	if hash[0:6] == "ffffff" {
-		return hash
-	}
-}
-`,
-	}
 
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
