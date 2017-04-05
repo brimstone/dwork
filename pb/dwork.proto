@@ -41,25 +41,25 @@ service Dwork {
 // The request message containing the user's name.
 message Results {
   string JobID = 1;
-  int64 workid = 2;
-  bool found = 3;
-  int64 location = 4;
+  int64 WorkID = 2;
+  bool Found = 3;
+  int64 Location = 4;
 }
 
 // The response message containing the greetings
 // https://developers.google.com/protocol-buffers/docs/proto3
 message WorkUnit {
   string JobID = 1;
-  int64 id = 2;
-  int64 offset = 3;
-  int64 size = 4;
-  int64 status = 5;
-  int64 timestamp = 6;
-  string code = 7;
+  int64 ID = 2;
+  int64 Offset = 3;
+  int64 Size = 4;
+  int64 Status = 5;
+  int64 Timestamp = 6;
+  string Code = 7;
 }
 
 message ResultsSuccess {
-  bool success = 1;
+  bool Success = 1;
 }
 
 message WorkerID {

@@ -41,9 +41,9 @@ func Main(cmd *cobra.Command, args []string) {
 
 func performWork(env *vm.Env, w *pb.WorkUnit) *pb.Results {
 	r := &pb.Results{}
-	r.Workid = w.Id
+	r.WorkID = w.ID
 	r.JobID = w.JobID
-	log.Printf("Performing work on job %s shard %d\n", w.JobID, w.Id)
+	log.Printf("Performing work on job %s shard %d\n", w.JobID, w.ID)
 	// real work happens here
 	for i := w.Offset * w.Size; i < (w.Offset+1)*w.Size; i++ {
 		v, err := env.Execute("work(" + strconv.FormatInt(i, 10) + ")")

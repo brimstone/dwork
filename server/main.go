@@ -68,7 +68,7 @@ func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, e
 	}
 	log.Printf("Distributing work unit %d\n", i)
 	shard.JobID = jobid
-	shard.Id = int64(i)
+	shard.ID = int64(i)
 	shard.Offset = int64(i)
 	shard.Status = 1
 	shard.Size = job.Size
