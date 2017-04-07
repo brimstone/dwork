@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log"
+	"os"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -33,8 +34,12 @@ func Main(cmd *cobra.Command, args []string) {
 	done := make(chan bool)
 	syscall.Setpriority(syscall.PRIO_PROCESS, 0, 19)
 	c := runtime.NumCPU()
+	hostname, err := os.Hostname()
+	if err != nil {
+		log.Fatalf("Unable to get hostname: %s\n", err.Error())
+	}
 	for i := 0; i < c; i++ {
-		go createWorker(done)
+		go createWorker(hostname + "." + strconv.FormatInt(int64(i), 10))
 	}
 
 	<-done
@@ -61,10 +66,12 @@ func performWork(env *vm.Env, w *pb.WorkUnit) *pb.Results {
 	return r
 }
 
-func createWorker(done chan bool) {
+func createWorker(workerid string) {
 	waitBackoff := 1
 	for {
-		workUnit, err := c.GiveWork(context.Background(), &pb.WorkerID{})
+		workUnit, err := c.GiveWork(context.Background(), &pb.WorkerID{
+			UUID: workerid,
+		})
 		if err != nil {
 			fmt.Printf("Error retrieving work: %#v Waiting for %ds for more work\n", err.Error(), waitBackoff)
 			time.Sleep(time.Second * time.Duration(waitBackoff))
@@ -96,6 +103,19 @@ func createVm(usercode string) (*vm.Env, error) {
 	env.Define("printf", fmt.Printf)
 	env.Define("sprintf", fmt.Sprintf)
 	env.Define("sha256", sha256.Sum256)
+	env.Define("len", func(v interface{}) int64 {
+		rv := reflect.ValueOf(v)
+		if rv.Kind() == reflect.Interface {
+			rv = rv.Elem()
+		}
+		if rv.Kind() == reflect.String {
+			return int64(len([]byte(rv.String())))
+		}
+		if rv.Kind() != reflect.Array && rv.Kind() != reflect.Slice {
+			panic("Argument #1 should be array")
+		}
+		return int64(rv.Len())
+	})
 
 	_, err := env.Execute(`
 	func work(x) {

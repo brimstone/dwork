@@ -25,10 +25,18 @@ var jobs map[string]*Job
 
 const MaxInt64 = int(^uint(0) >> 1)
 
+type Shard struct {
+	Size              int64
+	Status            int64
+	StartTimestamp    int64
+	CompleteTimestamp int64
+	Worker            string
+}
+
 type Job struct {
 	Size     int64
 	Status   bool
-	Shards   [1000]*pb.WorkUnit
+	Shards   [1000]*Shard
 	Code     string
 	Lock     *sync.Mutex
 	Solution string // I'd like this to be more generic, but oh well
@@ -52,40 +60,43 @@ func (s *server) GiveWork(ctx context.Context, in *pb.WorkerID) (*pb.WorkUnit, e
 	job := jobs[jobid]
 	job.Lock.Lock()
 	defer job.Lock.Unlock()
-	var shard *pb.WorkUnit
+	shard := &pb.WorkUnit{}
 	var i int
 	// Find next workUnit in workUnits with status = Unworked (0) or Timestamp is too old
 	// TODO figure out how this could end up unbounded or something?
 	for i = range job.Shards {
-		shard = job.Shards[i]
-		if shard == nil {
-			job.Shards[i] = &pb.WorkUnit{}
-			shard = job.Shards[i]
+		if job.Shards[i] == nil {
+			job.Shards[i] = &Shard{}
 		}
-		if shard.Status == 0 {
+		if job.Shards[i].Status == 0 {
 			break
 		}
 		// TODO hand out shards that are stale
+		// TODO maybe find the oldest shard not submitted?
 	}
 	log.Printf("Distributing work unit %d\n", i)
+	job.Shards[i].Worker = in.UUID
+	job.Shards[i].StartTimestamp = time.Now().Unix()
+	job.Shards[i].Status = 1
 	shard.JobID = jobid
 	shard.ID = int64(i)
 	shard.Offset = int64(i)
-	shard.Status = 1
 	shard.Size = job.Size
 	shard.Code = job.Code
-	shard.Timestamp = time.Now().Unix()
 	// TODO something about shard log/history
 	return shard, nil
 }
 
 func (s *server) ReceiveResults(ctx context.Context, r *pb.Results) (*pb.Success, error) {
+	job := jobs[r.JobID]
+	job.Lock.Lock()
+	defer job.Lock.Unlock()
+	shard := job.Shards[r.WorkID]
+	shard.Status = 2
+	shard.CompleteTimestamp = time.Now().Unix()
 	if r.Found {
 		log.Println("Someone found it!")
 		log.Printf("%#v\n", r)
-		job := jobs[r.JobID]
-		job.Lock.Lock()
-		defer job.Lock.Unlock()
 		job.Solution = strconv.FormatInt(r.Location, 10)
 		job.Status = false
 	}
@@ -121,11 +132,25 @@ func (s *server) GetAllJobs(ctx context.Context, _ *pb.JobParams) (*pb.JobStatus
 	var statuses []*pb.JobStatuses_JobStatus
 
 	for name, job := range jobs {
+		deliveredShards := int64(0)
+		completedShards := int64(0)
+		for _, shard := range job.Shards {
+			if shard == nil {
+				continue
+			}
+			if shard.Status == 1 {
+				deliveredShards++
+			} else if shard.Status == 2 {
+				completedShards++
+			}
+		}
 		statuses = append(statuses, &pb.JobStatuses_JobStatus{
-			Name:     name,
-			Shards:   int64(len(job.Shards)),
-			Found:    !job.Status,
-			Location: job.Solution,
+			Name:            name,
+			DeliveredShards: deliveredShards,
+			CompletedShards: completedShards,
+			TotalShards:     int64(len(job.Shards)),
+			Found:           !job.Status,
+			Location:        job.Solution,
 		})
 	}
 	return &pb.JobStatuses{

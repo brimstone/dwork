@@ -1,7 +1,8 @@
+bits = "ffffff"
 func work(x) {
-    msg = x + ""
+    msg = "Excited about my dwork prototype! <pow:" + len(bits) * 4 + ":" + x + ">"
     hash = sprintf("%x\n", sha256(msg))
-    if hash[0:4] == "ffff" {
-        return hash
+    if hash[0:len(bits)] == bits {
+        return msg + "=" + hash
     }
 }
